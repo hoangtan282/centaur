@@ -57,7 +57,9 @@ export async function normalizeSlackEnvelope(opts: {
     const part = await fetchSlackFilePart(opts.client, file)
     if (part) parts.push(part)
   }
+  const isDirectMessage = event.channel_type === 'im'
   const isMention =
+    isDirectMessage ||
     event.type === 'app_mention' ||
     Boolean(opts.botUserId && (event.text ?? '').includes(`<@${opts.botUserId}>`))
   const historyMessages = isMention
