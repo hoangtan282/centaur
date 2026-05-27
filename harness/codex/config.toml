@@ -1,4 +1,5 @@
 model = "gpt-5.5"
+model_provider = "ai-gateway"
 model_reasoning_effort = "low"
 personality = "pragmatic"
 model_verbosity = "low"

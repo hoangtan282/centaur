@@ -77,6 +77,24 @@ else
     exit 1
 fi
 
+ai_gateway_base_url="${AI_GATEWAY_BASE_URL:-https://ai-gateway.atherlabs.com/v1}"
+ai_gateway_base_url="${ai_gateway_base_url%/}"
+case "$ai_gateway_base_url" in
+    */v1) ;;
+    *) ai_gateway_base_url="$ai_gateway_base_url/v1" ;;
+esac
+if ! grep -q '^\[model_providers\.ai-gateway\]' "$HOME_DIR/.codex/config.toml"; then
+    cat >> "$HOME_DIR/.codex/config.toml" <<EOF
+
+[model_providers.ai-gateway]
+name = "AI Gateway"
+base_url = "$(toml_escape "$ai_gateway_base_url")"
+env_key = "AI_GATEWAY_API_KEY"
+wire_api = "responses"
+env_http_headers = { "X-AI-Gateway-Credential" = "AI_GATEWAY_CREDENTIAL", "X-AI-Gateway-Group" = "AI_GATEWAY_GROUP", "X-Preferred-Layers" = "AI_GATEWAY_PREFERRED_LAYERS" }
+EOF
+fi
+
 codex_laminar_trace_endpoint="${CODEX_OTEL_LAMINAR_ENDPOINT:-}"
 if [ -z "$codex_laminar_trace_endpoint" ]; then
     codex_laminar_base="${CODEX_OTEL_LAMINAR_BASE_URL:-${LMNR_BASE_URL:-}}"

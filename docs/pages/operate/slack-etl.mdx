@@ -107,18 +107,22 @@ context documents that were already synced.
 ## Run it manually
 
 Use a manual run when enabling the feature or testing a configuration change.
-From inside the API deployment, localhost bypass avoids needing an external API
-key:
+Run it through the API deployment and include one of the service API keys
+mounted there:
 
 ```bash
-kubectl exec -n centaur deploy/centaur-centaur-api -- curl -s -X POST \
-  http://localhost:8000/workflows/runs \
-  -H "Content-Type: application/json" \
-  -d '{
+kubectl exec -i -n centaur deploy/centaur-centaur-api -- sh -c '
+  curl -sS -X POST http://localhost:8000/workflows/runs \
+    -H "Authorization: Bearer ${LOCAL_DEV_API_KEY:-${SLACKBOT_API_KEY}}" \
+    -H "Content-Type: application/json" \
+    --data-binary @-
+' <<'JSON' | jq
+{
     "workflow_name": "slack_sync",
     "input": {"metadata": {"reason": "manual_check"}},
     "eager_start": true
-  }' | jq
+}
+JSON
 ```
 
 Then inspect the run:

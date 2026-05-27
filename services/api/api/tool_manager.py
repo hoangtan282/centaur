@@ -1605,6 +1605,12 @@ class ToolManager:
             match_headers=("Authorization",),
         ),
         HttpSecret(
+            name="AI_GATEWAY_API_KEY",
+            secret_ref="AI_GATEWAY_API_KEY",
+            hosts=("ai-gateway.atherlabs.com",),
+            match_headers=("Authorization",),
+        ),
+        HttpSecret(
             name="XAI_API_KEY",
             secret_ref="XAI_API_KEY",
             hosts=("api.x.ai",),

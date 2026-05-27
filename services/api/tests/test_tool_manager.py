@@ -8,11 +8,14 @@ from typing import Optional, Union
 
 import httpx
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from api.api_keys import APIKeyInfo  # noqa: E402
+from api.deps import verify_api_key  # noqa: E402
 from api.tool_manager import (  # noqa: E402
+    HttpSecret,
     _LIFECYCLE_METHODS,
     _describe_method_docstring,
     _friendly_type_name,
@@ -509,6 +512,18 @@ def test_discover_loads_fake_tools_with_shadowing_personas_and_failures(tmp_path
     assert "code-reviewer" not in manager.tools
 
 
+def test_collect_secrets_includes_ai_gateway_harness_secret():
+    manager = ToolManager([])
+
+    secrets = {secret.name: secret for secret in manager.collect_secrets()}
+    secret = secrets["AI_GATEWAY_API_KEY"]
+
+    assert isinstance(secret, HttpSecret)
+    assert secret.secret_ref == "AI_GATEWAY_API_KEY"
+    assert secret.hosts == ("ai-gateway.atherlabs.com",)
+    assert secret.match_headers == ("Authorization",)
+
+
 @pytest.mark.asyncio
 async def test_call_tool_invokes_sync_and_async_methods_with_secret_placeholders(
     tmp_path: Path,
@@ -611,6 +626,18 @@ async def test_tool_rest_router_lists_describes_and_invokes_tools(
     manager = ToolManager(tools_dir)
     manager.discover()
     app = FastAPI()
+
+    async def fake_verify_api_key(request: Request) -> str:
+        request.state.api_key_info = APIKeyInfo(
+            id="test-key",
+            name="test",
+            key_prefix="test",
+            scopes=["tools:*"],
+            created_by="test",
+        )
+        return "key:test"
+
+    app.dependency_overrides[verify_api_key] = fake_verify_api_key
     app.include_router(manager.create_rest_router())
 
     transport = httpx.ASGITransport(app=app)

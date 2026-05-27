@@ -20,7 +20,7 @@ export SLACK_SIGNING_SECRET=...
 export SLACKBOT_API_KEY=...
 ```
 
-Application-level LLM/tool secrets such as OpenAI and Anthropic tokens stay in 1Password and are loaded by the secrets service.
+Application-level LLM/tool secrets such as AI Gateway and Anthropic tokens stay in 1Password and are loaded by the secrets service.
 
 ### 2. Boot the stack
 
@@ -41,29 +41,17 @@ just up
 
 ### 3. Test
 
-From inside the API deployment (localhost bypass — no key needed):
+Run the built-in smoke test. It executes a real durable agent turn through the API
+and uses the service API key already mounted in the API deployment:
 
 ```bash
-THREAD_KEY=test-e2e-1
-
-SPAWN=$(kubectl exec -n centaur deploy/centaur-centaur-api -- curl -s -X POST http://localhost:8000/agent/spawn \
-  -H "Content-Type: application/json" \
-  -d "{\"thread_key\":\"${THREAD_KEY}\",\"harness\":\"amp\"}")
-ASSIGNMENT_GENERATION=$(printf '%s' "$SPAWN" | jq -r '.assignment_generation')
-
-kubectl exec -n centaur deploy/centaur-centaur-api -- curl -s -X POST http://localhost:8000/agent/message \
-  -H "Content-Type: application/json" \
-  -d "{\"thread_key\":\"${THREAD_KEY}\",\"assignment_generation\":${ASSIGNMENT_GENERATION},\"role\":\"user\",\"parts\":[{\"type\":\"text\",\"text\":\"Reply with exactly PONG and nothing else.\"}]}"
-
-EXECUTE=$(kubectl exec -n centaur deploy/centaur-centaur-api -- curl -s -X POST http://localhost:8000/agent/execute \
-  -H "Content-Type: application/json" \
-  -d "{\"thread_key\":\"${THREAD_KEY}\",\"assignment_generation\":${ASSIGNMENT_GENERATION},\"harness\":\"amp\",\"delivery\":{\"platform\":\"dev\"}}")
-EXECUTION_ID=$(printf '%s' "$EXECUTE" | jq -r '.execution_id')
-
-kubectl exec -n centaur deploy/centaur-centaur-api -- curl -s "http://localhost:8000/agent/executions/${EXECUTION_ID}" | jq
+just smoke
 ```
 
-Or create a DB-backed key for external use (see [API Key Management](#api-key-management)).
+Set `CENTAUR_SMOKE_HARNESS=amp` or `CENTAUR_SMOKE_HARNESS=claude-code` when you
+need to test a non-default harness. For manual curls, include a DB-backed API
+key (see [API Key Management](#api-key-management)); agent endpoints do not use
+localhost auth bypass.
 
 ## Architecture
 
@@ -476,6 +464,7 @@ Sandbox Pods never see real API keys. The firewall (`services/firewall/addon.py`
 |-------------|--------|--------|
 | `api.anthropic.com` | `x-api-key` | raw |
 | `api.openai.com` | `authorization` | bearer |
+| `ai-gateway.atherlabs.com` | `authorization` | bearer |
 | `ampcode.com` | `authorization` | bearer |
 | `api.github.com` | `authorization` | token |
 | `github.com` | `authorization` | basic auth |
@@ -489,7 +478,7 @@ Sandbox Pods never see real API keys. The firewall (`services/firewall/addon.py`
 
 ## Security Model
 
-- **API auth**: All callers authenticate with DB-backed API keys (`aiv2_*` prefix, stored in `api_keys` table). Local in-cluster service calls use the configured bypass paths where applicable.
+- **API auth**: All callers authenticate with DB-backed API keys (`aiv2_*` prefix, stored in `api_keys` table). Health/readiness probes are the unauthenticated exception.
 - **Sandbox auth**: Sandbox Pods get auto-issued HMAC-signed tokens (`sbx1.*` prefix) minted by the API. These are short-lived (2h TTL) and scoped to `agent` + `tools:*`.
 - **Slack**: HMAC-SHA256 signature verification on all webhooks
 - **Public edge**: The Helm chart exposes public routes only when configured through Ingress, HTTPRoute, or service settings.
@@ -512,11 +501,11 @@ All API authentication uses **DB-backed keys** stored in the `api_keys` Postgres
 
 - **Slackbot**: `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, and `SLACKBOT_API_KEY` are injected from the local infra Secret.
 - **Sandbox containers**: Auto-issued `sbx1.*` token injected as `CENTAUR_API_KEY` at container creation
-- **Local testing**: Use localhost bypass (no key needed from inside the API deployment), or create a key via admin API
+- **Local testing**: Use `just smoke`, which reads the service key from the API deployment, or create a key via admin API
 
 ## Secrets
 
-Tool credentials (e.g., `ANTHROPIC_API_KEY`, `AMP_API_KEY`) are never materialized inside sandboxes or the API service. Tools declare which keys they need in their `pyproject.toml` and call `secret("KEY")` to receive a placeholder. Outbound HTTPS traffic is MITM'd by iron-proxy, which substitutes the real credential based on the host/key injection map managed by firewall-manager. iron-proxy resolves `op://...` references directly against 1Password.
+Tool credentials (e.g., `AI_GATEWAY_API_KEY`, `ANTHROPIC_API_KEY`, `AMP_API_KEY`) are never materialized inside sandboxes or the API service. Tools declare which keys they need in their `pyproject.toml` and call `secret("KEY")` to receive a placeholder. Outbound HTTPS traffic is MITM'd by iron-proxy, which substitutes the real credential based on the host/key injection map managed by firewall-manager. iron-proxy resolves `op://...` references directly against 1Password.
 
 For local development, infra secrets are stored in Kubernetes Secrets created by `just bootstrap-secrets`; application secrets continue to come from 1Password.
 
@@ -590,64 +579,15 @@ Services must write single-line JSON to stdout with these fields:
 just up
 ```
 
-All E2E curl commands below use `kubectl exec` for localhost bypass (no API key needed).
-To test from outside the container, create a DB-backed key via the [admin API](#api-key-management).
-
-### 2. Spawn a runtime assignment
+Run the local smoke recipe first:
 
 ```bash
-THREAD_KEY=test-e2e-1
-
-SPAWN=$(kubectl exec -n centaur deploy/centaur-centaur-api -- curl -s -X POST http://localhost:8000/agent/spawn \
-  -H "Content-Type: application/json" \
-  -d "{\"thread_key\":\"${THREAD_KEY}\",\"harness\":\"amp\"}")
-ASSIGNMENT_GENERATION=$(printf '%s' "$SPAWN" | jq -r '.assignment_generation')
+CENTAUR_SMOKE_HARNESS=codex just smoke
 ```
 
-### 3. Persist a message
-
-```bash
-kubectl exec -n centaur deploy/centaur-centaur-api -- curl -s -X POST http://localhost:8000/agent/message \
-  -H "Content-Type: application/json" \
-  -d "{\"thread_key\":\"${THREAD_KEY}\",\"assignment_generation\":${ASSIGNMENT_GENERATION},\"role\":\"user\",\"parts\":[{\"type\":\"text\",\"text\":\"Reply with exactly PONG and nothing else.\"}]}"
-```
-
-### 4. Enqueue execution
-
-```bash
-EXECUTE=$(kubectl exec -n centaur deploy/centaur-centaur-api -- curl -s -X POST http://localhost:8000/agent/execute \
-  -H "Content-Type: application/json" \
-  -d "{\"thread_key\":\"${THREAD_KEY}\",\"assignment_generation\":${ASSIGNMENT_GENERATION},\"harness\":\"amp\",\"delivery\":{\"platform\":\"dev\"}}")
-EXECUTION_ID=$(printf '%s' "$EXECUTE" | jq -r '.execution_id')
-```
-
-### 5. Tail durable events (or reconnect later)
-
-```bash
-kubectl exec -n centaur deploy/centaur-centaur-api -- curl -s -N \
-  "http://localhost:8000/agent/threads/${THREAD_KEY}/events?execution_id=${EXECUTION_ID}&after_event_id=0"
-```
-
-If this stream disconnects, reconnect with the last seen `event_id` as `after_event_id`. If the execution already finished, the endpoint emits the terminal `execution_state` snapshot.
-
-### 6. Inspect or cancel
-
-```bash
-kubectl exec -n centaur deploy/centaur-centaur-api -- curl -s "http://localhost:8000/agent/executions/${EXECUTION_ID}" | jq
-
-kubectl exec -n centaur deploy/centaur-centaur-api -- curl -s -X POST \
-  "http://localhost:8000/agent/executions/${EXECUTION_ID}/cancel" \
-  -H "Content-Type: application/json" \
-  -d '{}'
-```
-
-### 7. Release the assignment when finished
-
-```bash
-kubectl exec -n centaur deploy/centaur-centaur-api -- curl -s -X POST "http://localhost:8000/agent/threads/${THREAD_KEY}/release" \
-  -H "Content-Type: application/json" \
-  -d '{"release_id":"rel-test-e2e-1","cancel_inflight":true}'
-```
+It spawns a runtime, persists a `PONG` prompt, enqueues execution, polls the
+terminal execution state, and releases the assignment. For manual API calls,
+include `Authorization: Bearer <db-backed-key>` even when using `kubectl exec`.
 
 ### Debugging
 

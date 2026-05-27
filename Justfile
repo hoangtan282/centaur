@@ -139,23 +139,60 @@ smoke:
     set -euo pipefail
     THREAD_KEY="smoke-$(date +%s)"
     API_DEPLOY="deploy/{{release}}-centaur-api"
+    HARNESS="${CENTAUR_SMOKE_HARNESS:-codex}"
 
-    SPAWN=$(kubectl exec -n {{namespace}} "$API_DEPLOY" -- curl -s -X POST http://localhost:8000/agent/spawn \
-      -H "Content-Type: application/json" \
-      -d "{\"thread_key\":\"${THREAD_KEY}\"}")
+    api_json() {
+      local method="$1"
+      local url="$2"
+      local payload="${3:-}"
+      if [[ -n "$payload" ]]; then
+        printf '%s' "$payload" | kubectl exec -i -n {{namespace}} "$API_DEPLOY" -- sh -c '
+          token="${LOCAL_DEV_API_KEY:-${SLACKBOT_API_KEY:-}}"
+          if [ -z "$token" ]; then
+            echo "LOCAL_DEV_API_KEY or SLACKBOT_API_KEY must be set in the API pod" >&2
+            exit 2
+          fi
+          curl -sS -X "$1" "$2" \
+            -H "Authorization: Bearer ${token}" \
+            -H "Content-Type: application/json" \
+            --data-binary @-
+        ' sh "$method" "$url"
+      else
+        kubectl exec -n {{namespace}} "$API_DEPLOY" -- sh -c '
+          token="${LOCAL_DEV_API_KEY:-${SLACKBOT_API_KEY:-}}"
+          if [ -z "$token" ]; then
+            echo "LOCAL_DEV_API_KEY or SLACKBOT_API_KEY must be set in the API pod" >&2
+            exit 2
+          fi
+          curl -sS -X "$1" "$2" \
+            -H "Authorization: Bearer ${token}"
+        ' sh "$method" "$url"
+      fi
+    }
+
+    cleanup() {
+      if [[ -n "${ASSIGNMENT_GENERATION:-}" ]]; then
+        api_json POST "http://localhost:8000/agent/threads/${THREAD_KEY}/release" '{}' >/dev/null || true
+      fi
+    }
+    trap cleanup EXIT
+
+    SPAWN=$(api_json POST http://localhost:8000/agent/spawn \
+      "$(jq -cn --arg thread_key "$THREAD_KEY" --arg harness "$HARNESS" \
+        '{thread_key:$thread_key,harness:$harness}')")
     ASSIGNMENT_GENERATION=$(printf '%s' "$SPAWN" | jq -r '.assignment_generation')
 
-    kubectl exec -n {{namespace}} "$API_DEPLOY" -- curl -s -X POST http://localhost:8000/agent/message \
-      -H "Content-Type: application/json" \
-      -d "{\"thread_key\":\"${THREAD_KEY}\",\"assignment_generation\":${ASSIGNMENT_GENERATION},\"role\":\"user\",\"parts\":[{\"type\":\"text\",\"text\":\"Reply with exactly PONG and nothing else.\"}]}" >/dev/null
+    api_json POST http://localhost:8000/agent/message \
+      "$(jq -cn --arg thread_key "$THREAD_KEY" --argjson generation "$ASSIGNMENT_GENERATION" \
+        '{thread_key:$thread_key,assignment_generation:$generation,role:"user",parts:[{type:"text",text:"Reply with exactly PONG and nothing else."}]}')" >/dev/null
 
-    EXECUTE=$(kubectl exec -n {{namespace}} "$API_DEPLOY" -- curl -s -X POST http://localhost:8000/agent/execute \
-      -H "Content-Type: application/json" \
-      -d "{\"thread_key\":\"${THREAD_KEY}\",\"assignment_generation\":${ASSIGNMENT_GENERATION},\"delivery\":{\"platform\":\"dev\"}}")
+    EXECUTE=$(api_json POST http://localhost:8000/agent/execute \
+      "$(jq -cn --arg thread_key "$THREAD_KEY" --arg harness "$HARNESS" --argjson generation "$ASSIGNMENT_GENERATION" \
+        '{thread_key:$thread_key,assignment_generation:$generation,harness:$harness,delivery:{platform:"dev"}}')")
     EXECUTION_ID=$(printf '%s' "$EXECUTE" | jq -r '.execution_id')
 
     for _ in $(seq 1 60); do
-      STATE=$(kubectl exec -n {{namespace}} "$API_DEPLOY" -- curl -s "http://localhost:8000/agent/executions/${EXECUTION_ID}")
+      STATE=$(api_json GET "http://localhost:8000/agent/executions/${EXECUTION_ID}")
       STATUS=$(printf '%s' "$STATE" | jq -r '.status // empty')
       case "$STATUS" in
         completed)
@@ -171,6 +208,6 @@ smoke:
       sleep 2
     done
 
-    kubectl exec -n {{namespace}} "$API_DEPLOY" -- curl -s "http://localhost:8000/agent/executions/${EXECUTION_ID}" | jq
+    api_json GET "http://localhost:8000/agent/executions/${EXECUTION_ID}" | jq
     echo "smoke timed out waiting for execution ${EXECUTION_ID}" >&2
     exit 1

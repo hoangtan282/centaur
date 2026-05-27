@@ -124,11 +124,15 @@ export OP_VAULT=...
 export SLACK_BOT_TOKEN=...
 export SLACK_SIGNING_SECRET=...
 export SLACKBOT_API_KEY=...
+export AI_GATEWAY_BASE_URL=https://ai-gateway.atherlabs.com/v1
+export AI_GATEWAY_API_KEY=clp_...
 ```
 
 Create the Slackbot app at [api.slack.com/apps](https://api.slack.com/apps).
-Use the app's Bot User OAuth Token for `SLACK_BOT_TOKEN` and its Signing Secret
-for `SLACK_SIGNING_SECRET`.
+The starter manifest is in `contrib/slack/manifest.yaml`; replace its
+`YOUR_PUBLIC_SLACKBOT_HOST` placeholder with the public HTTPS Slackbot URL
+before pasting it into Slack. Use the app's Bot User OAuth Token for
+`SLACK_BOT_TOKEN` and its Signing Secret for `SLACK_SIGNING_SECRET`.
 
 What they are for:
 
@@ -137,6 +141,13 @@ What they are for:
 - `SLACK_BOT_TOKEN`: Slack bot token for the local Slackbot service
 - `SLACK_SIGNING_SECRET`: verifies incoming Slack requests
 - `SLACKBOT_API_KEY`: API key the Slackbot uses to call Centaur
+- `AI_GATEWAY_BASE_URL`: OpenAI-compatible AI Gateway endpoint for Codex
+- `AI_GATEWAY_API_KEY`: AI Gateway portal key used by the default Codex harness
+
+With the default `ironProxy.secretSource=onepassword`, store the real key in a
+1Password item named `AI_GATEWAY_API_KEY`. If you switch iron-proxy to the `env`
+secret source, `just bootstrap-secrets` will copy `AI_GATEWAY_API_KEY` from your
+shell into the local Kubernetes Secret.
 
 Then create local Kubernetes Secrets from those environment variables and boot the stack:
 

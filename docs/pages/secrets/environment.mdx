@@ -35,7 +35,8 @@ kubectl create secret generic centaur-infra-env \
   --from-literal=SLACK_SIGNING_SECRET='...' \
   --from-literal=SANDBOX_SIGNING_KEY="$(openssl rand -hex 32)" \
   --from-literal=IRON_MANAGEMENT_API_KEY="$(openssl rand -hex 32)" \
-  --from-literal=OPENAI_API_KEY='...' \
+  --from-literal=AI_GATEWAY_BASE_URL='https://ai-gateway.atherlabs.com/v1' \
+  --from-literal=AI_GATEWAY_API_KEY='clp_...' \
   --from-literal=AMP_API_KEY='...' \
   --from-literal=ANTHROPIC_API_KEY='...' \
   --from-literal=WAREHOUSE_API_KEY='...'

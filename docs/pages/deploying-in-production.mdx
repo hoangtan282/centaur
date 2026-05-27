@@ -79,19 +79,21 @@ Store one secret per enabled harness credential:
 
 | Harness | API value | Slack selector | Credential to store | Upstream |
 |---------|-----------|----------------|---------------------|----------|
-| Codex default | `codex` | none or `--codex` | `OPENAI_API_KEY` | `api.openai.com` |
+| Codex default | `codex` | none or `--codex` | `AI_GATEWAY_API_KEY` | `ai-gateway.atherlabs.com` |
 | Amp | `amp` | `--amp` | `AMP_API_KEY` | `ampcode.com` |
 | Claude Code | `claude-code` | `--claude` | `ANTHROPIC_API_KEY` | `api.anthropic.com` |
 | pi-mono | `pi-mono` | `--pi` | `ANTHROPIC_API_KEY` | `api.anthropic.com` |
 
 In normal sandbox mode, containers receive placeholder values such as
-`OPENAI_API_KEY=OPENAI_API_KEY`. [iron-proxy](https://docs.iron.sh) swaps the
+`AI_GATEWAY_API_KEY=AI_GATEWAY_API_KEY`. [iron-proxy](https://docs.iron.sh) swaps the
 placeholder for the real key on outbound requests, only on the hosts and
 headers the secret is bound to.
 
 When `ironProxy.secretSource` is `onepassword`, [iron-proxy](https://docs.iron.sh) resolves these values
 from `op://$OP_VAULT/<SECRET_NAME>/credential`. For example, store the default
-Codex credential in a 1Password item named `OPENAI_API_KEY`.
+Codex credential in a 1Password item named `AI_GATEWAY_API_KEY`.
+Set `AI_GATEWAY_BASE_URL` only when you need a non-default gateway; otherwise
+Codex uses `https://ai-gateway.atherlabs.com/v1`.
 
 Whatever source you pick, the vault is shared across the whole deployment,
 so any thread can use any configured credential. Per-user and per-channel

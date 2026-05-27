@@ -401,6 +401,22 @@ class TestBuildHarnessCmd:
         assert "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1" not in env
         assert "CLAUDE_CODE_ENABLE_OPUS_4_7_FAST_MODE=1" not in env
 
+    def test_container_env_includes_ai_gateway_codex_env(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        from api.sandbox.config import container_env
+
+        monkeypatch.delenv("AGENT_LOCAL_DEV", raising=False)
+        monkeypatch.setenv("AGENT_API_URL", "http://api.internal:8000")
+        monkeypatch.setenv("FIREWALL_HOST", "firewall.internal")
+        monkeypatch.setenv("AI_GATEWAY_BASE_URL", "https://gateway.example/v1")
+
+        env = container_env("thread-key", "sandbox-id", "firewall.internal")
+
+        assert "AI_GATEWAY_API_KEY=AI_GATEWAY_API_KEY" in env
+        assert "AI_GATEWAY_BASE_URL=https://gateway.example/v1" in env
+
 
 class TestResolveHarnessProfile:
     def test_persona_uses_declared_engine_unless_harness_overrides(self, monkeypatch):

@@ -12,6 +12,12 @@ Creates the required local-dev Kubernetes infra Secrets consumed by the Helm cha
 Requires OP_SERVICE_ACCOUNT_TOKEN, OP_VAULT, SLACK_BOT_TOKEN,
 SLACK_SIGNING_SECRET, and SLACKBOT_API_KEY in the shell environment.
 
+Optional local runtime keys:
+  AI_GATEWAY_BASE_URL       OpenAI-compatible AI Gateway base URL, usually ending in /v1
+  AI_GATEWAY_API_KEY        Portal API key with clp_ prefix for AI Gateway
+  LMNR_BASE_URL             Optional Laminar endpoint
+  LMNR_PROJECT_API_KEY      Optional Laminar project API key
+
 Optional 1Password Connect bootstrap (when ironProxy.manager.secretSource is
 set to onepassword-connect in the Helm values):
   OP_CONNECT_CREDENTIALS_FILE  path to 1password-credentials.json; if set,
@@ -89,6 +95,12 @@ delete_if_forced centaur-onepassword-connect-credentials
 
 if secret_exists centaur-infra-env; then
   patch_data=()
+  if [[ -n "${AI_GATEWAY_BASE_URL:-}" ]]; then
+    patch_data+=("\"AI_GATEWAY_BASE_URL\":\"$(printf '%s' "$AI_GATEWAY_BASE_URL" | base64 | tr -d '\n')\"")
+  fi
+  if [[ -n "${AI_GATEWAY_API_KEY:-}" ]]; then
+    patch_data+=("\"AI_GATEWAY_API_KEY\":\"$(printf '%s' "$AI_GATEWAY_API_KEY" | base64 | tr -d '\n')\"")
+  fi
   if [[ -n "${LMNR_PROJECT_API_KEY:-}" ]]; then
     patch_data+=("\"LMNR_PROJECT_API_KEY\":\"$(printf '%s' "$LMNR_PROJECT_API_KEY" | base64 | tr -d '\n')\"")
   fi
@@ -101,7 +113,7 @@ if secret_exists centaur-infra-env; then
   if [[ "${#patch_data[@]}" -gt 0 ]]; then
     patch_json="{\"data\":{$(IFS=,; echo "${patch_data[*]}")}}"
     kubectl -n "$NAMESPACE" patch secret centaur-infra-env --type merge -p "$patch_json" >/dev/null
-    echo "Updated optional Laminar keys in Secret centaur-infra-env in namespace $NAMESPACE"
+    echo "Updated optional runtime keys in Secret centaur-infra-env in namespace $NAMESPACE"
   fi
   echo "Secret centaur-infra-env already exists in namespace $NAMESPACE; leaving unchanged"
 else
@@ -121,6 +133,12 @@ else
   )
   if [[ -n "${LMNR_PROJECT_API_KEY:-}" ]]; then
     secret_args+=(--from-literal=LMNR_PROJECT_API_KEY="$LMNR_PROJECT_API_KEY")
+  fi
+  if [[ -n "${AI_GATEWAY_BASE_URL:-}" ]]; then
+    secret_args+=(--from-literal=AI_GATEWAY_BASE_URL="$AI_GATEWAY_BASE_URL")
+  fi
+  if [[ -n "${AI_GATEWAY_API_KEY:-}" ]]; then
+    secret_args+=(--from-literal=AI_GATEWAY_API_KEY="$AI_GATEWAY_API_KEY")
   fi
   if [[ -n "${LMNR_BASE_URL:-}" ]]; then
     secret_args+=(--from-literal=LMNR_BASE_URL="$LMNR_BASE_URL")

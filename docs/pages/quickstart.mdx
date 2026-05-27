@@ -43,7 +43,7 @@ The `Justfile` builds local images named `centaur-api:latest`,
 The default local chart expects one infra Secret named `centaur-infra-env`.
 `just bootstrap-secrets` creates it from your shell environment.
 
-`just bootstrap-secrets` currently requires these shell variables:
+`just bootstrap-secrets` currently requires these infra shell variables:
 
 ```bash
 export OP_SERVICE_ACCOUNT_TOKEN=...
@@ -53,9 +53,23 @@ export SLACK_SIGNING_SECRET=...
 export SLACKBOT_API_KEY=...
 ```
 
+For local Codex turns through AI Gateway, also provide the gateway config:
+
+```bash
+export AI_GATEWAY_BASE_URL=https://ai-gateway.atherlabs.com/v1
+export AI_GATEWAY_API_KEY=clp_...
+```
+
+With the default `ironProxy.secretSource=onepassword`, store the real key in a
+1Password item named `AI_GATEWAY_API_KEY`. If you switch iron-proxy to the `env`
+secret source, `just bootstrap-secrets` will copy `AI_GATEWAY_API_KEY` from your
+shell into the local Kubernetes Secret for iron-proxy to resolve.
+
 Create the Slackbot app at [api.slack.com/apps](https://api.slack.com/apps).
-Use the app's Bot User OAuth Token for `SLACK_BOT_TOKEN` and its Signing Secret
-for `SLACK_SIGNING_SECRET`.
+The starter manifest is in `contrib/slack/manifest.yaml`; replace its
+`YOUR_PUBLIC_SLACKBOT_HOST` placeholder with the public HTTPS Slackbot URL
+before pasting it into Slack. Use the app's Bot User OAuth Token for
+`SLACK_BOT_TOKEN` and its Signing Secret for `SLACK_SIGNING_SECRET`.
 
 `OP_SERVICE_ACCOUNT_TOKEN` and `OP_VAULT` let [iron-proxy](https://docs.iron.sh)
 resolve model and tool credentials through 1Password. `SLACK_SIGNING_SECRET`
@@ -66,15 +80,18 @@ enabled in `values.dev.yaml`; use a real token if you want to test Slack.
 `SLACKBOT_API_KEY` is a static service token. The API bootstraps that value into
 Postgres on startup, so it must exist before `just up`.
 
-Application-level model and tool secrets, such as `OPENAI_API_KEY`,
+Application-level model and tool secrets, such as `AI_GATEWAY_API_KEY`,
 `ANTHROPIC_API_KEY`, `AMP_API_KEY`, and `GITHUB_TOKEN`, should live in
 1Password or the configured [iron-proxy](https://docs.iron.sh) secret source. Sandboxes receive
 placeholder values and [iron-proxy](https://docs.iron.sh) injects the real credentials only on approved
 outbound requests.
 
-The default harness is `codex`, so `OPENAI_API_KEY` must exist in the configured
-secret source before Slack agent turns can complete. Use explicit harness
-selectors only when you want a non-default harness such as Amp or Claude Code.
+The default harness is `codex`, configured to call AI Gateway through the
+OpenAI-compatible Responses API. `AI_GATEWAY_API_KEY` must exist in the
+configured secret source before agent turns can complete. `AI_GATEWAY_BASE_URL`
+defaults to `https://ai-gateway.atherlabs.com/v1` when unset. Use explicit
+harness selectors only when you want a non-default harness such as Amp or Claude
+Code.
 
 ## 3. Boot the stack
 
@@ -96,8 +113,9 @@ just status
 
 ## 4. Verify the API
 
-The API exposes localhost inside its own deployment. Localhost bypasses external
-API-key auth, which is why the health check runs through `kubectl exec`:
+The API exposes localhost inside its own deployment. Health routes are
+unauthenticated, which is why the health check can run through `kubectl exec`
+without an API key:
 
 ```bash
 kubectl exec -n centaur deploy/centaur-centaur-api -- \
@@ -114,7 +132,9 @@ Expected shape:
 
 Before testing Slack, run the local smoke test. It uses the same durable agent
 API that Slackbot uses: spawn or reuse a runtime, persist a message, enqueue an
-execution, and poll the execution state until the result contains `PONG`.
+execution, and poll the execution state until the result contains `PONG`. The
+recipe reads the service API key from the API deployment and releases the smoke
+runtime when it finishes.
 
 ```bash
 just smoke

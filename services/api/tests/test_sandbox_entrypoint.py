@@ -18,6 +18,7 @@ def _write_codex_harness_config(home: Path) -> Path:
         "\n".join(
             [
                 'model = "gpt-5.5"',
+                'model_provider = "ai-gateway"',
                 'model_reasoning_effort = "low"',
                 'plan_mode_reasoning_effort = "high"',
                 'approval_policy = "on-request"',
@@ -135,7 +136,50 @@ def test_sandbox_entrypoint_installs_codex_harness_config(tmp_path: Path) -> Non
     )
 
     assert result.returncode == 0, result.stderr or result.stdout
-    assert result.stdout == (harness_dir / "codex" / "config.toml").read_text()
+    assert result.stdout.startswith((harness_dir / "codex" / "config.toml").read_text())
+    parsed = tomllib.loads(result.stdout)
+    assert parsed["model_provider"] == "ai-gateway"
+    assert parsed["model_providers"]["ai-gateway"]["base_url"] == (
+        "https://ai-gateway.atherlabs.com/v1"
+    )
+
+
+def test_sandbox_entrypoint_appends_ai_gateway_codex_provider(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    harness_dir = _write_codex_harness_config(home)
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(ENTRYPOINT_SH),
+            "sh",
+            "-lc",
+            'cat "$HOME/.codex/config.toml"',
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={
+            "HOME": str(home),
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "CENTAUR_HARNESS_CONFIG_DIR": str(harness_dir),
+            "AI_GATEWAY_BASE_URL": "https://gateway.example/v1",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    parsed = tomllib.loads(result.stdout)
+    assert parsed["model_provider"] == "ai-gateway"
+    provider = parsed["model_providers"]["ai-gateway"]
+    assert provider["name"] == "AI Gateway"
+    assert provider["base_url"] == "https://gateway.example/v1"
+    assert provider["env_key"] == "AI_GATEWAY_API_KEY"
+    assert provider["wire_api"] == "responses"
+    assert provider["env_http_headers"] == {
+        "X-AI-Gateway-Credential": "AI_GATEWAY_CREDENTIAL",
+        "X-AI-Gateway-Group": "AI_GATEWAY_GROUP",
+        "X-Preferred-Layers": "AI_GATEWAY_PREFERRED_LAYERS",
+    }
 
 
 def test_sandbox_entrypoint_appends_codex_laminar_otel_config(tmp_path: Path) -> None:
